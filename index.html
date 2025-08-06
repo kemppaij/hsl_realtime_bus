@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>HSL Busses Live Map</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        #map { height: 98vh; width: 99vw; }
+        .bus-marker {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 46px;
+            height: 54px;
+            background: transparent;
+        }
+        .bus-svg {
+            width: 46px;
+            height: 36px;
+            margin-top: 0;
+            margin-bottom: 1px;
+            /* Optional: Drop shadow */
+            filter: drop-shadow(0 1px 2px rgba(0,0,0,0.25));
+        }
+        .line-label {
+            font-size: 15px;
+            font-weight: bold;
+            color: #fff;
+            background: #0072ce;
+            padding: 0 9px 0 9px;
+            border-radius: 10px;
+            margin-top: -8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+            border: 2px solid #fff;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const map = L.map('map').setView([60.1699, 24.9384], 11); // Helsinki center
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: 'Map data © <a href="https://openstreetmap.org">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        let busMarkers = {};
+
+        function createBusIcon(line) {
+            // Improved SVG: A stylized blue bus with windows, headlights, and wheels
+            const busSVG = `
+                <svg class="bus-svg" viewBox="0 0 46 36" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="4" y="7" width="38" height="20" rx="4" fill="#0072ce" stroke="#2c3e50" stroke-width="2"/>
+                  <rect x="8" y="11" width="8" height="8" fill="#e6f3ff" stroke="#bbb" stroke-width="1"/>
+                  <rect x="18" y="11" width="8" height="8" fill="#e6f3ff" stroke="#bbb" stroke-width="1"/>
+                  <rect x="28" y="11" width="8" height="8" fill="#e6f3ff" stroke="#bbb" stroke-width="1"/>
+                  <!-- Grill/bumper -->
+                  <rect x="14" y="27" width="18" height="3" rx="1" fill="#fff" opacity="0.65"/>
+                  <!-- Wheels -->
+                  <circle cx="12" cy="25" r="4" fill="#444" stroke="#222" stroke-width="1"/>
+                  <circle cx="34" cy="25" r="4" fill="#444" stroke="#222" stroke-width="1"/>                  
+                </svg>
+            `;
+            return L.divIcon({
+                className: 'bus-marker',
+                html: `${busSVG}<div class="line-label">${line}</div>`,
+                iconSize: [46, 54],
+                iconAnchor: [23, 44], // bottom center of bus
+                popupAnchor: [0, -44]
+            });
+        }
+
+        function animateMarker(marker, newLat, newLng, duration = 1000) {
+            if (marker.slideTo) {
+                marker.slideTo([newLat, newLng], { duration: duration });
+            } else {
+                marker.setLatLng([newLat, newLng]);
+            }
+        }
+
+        async function updateBuses() {
+            const resp = await fetch('api.php');
+            const buses = await resp.json();
+
+            // Remove old markers
+            for (const id in busMarkers) {
+                if (!buses.some(bus => bus.veh === id)) {
+                    map.removeLayer(busMarkers[id]);
+                    delete busMarkers[id];
+                }
+            }
+
+            buses.forEach(bus => {
+                let marker = busMarkers[bus.veh];
+                const popup = `Line: <b>${bus.line}</b><br>Speed: ${bus.spd} km/h<br>Delay: ${bus.dl} s<br>Time: ${bus.tst}`;
+                if (marker) {
+                    animateMarker(marker, bus.lat, bus.lon, 1000);
+                    marker.setPopupContent(popup);
+                } else {
+                    marker = L.marker([bus.lat, bus.lon], {icon: createBusIcon(bus.line)});
+                    busMarkers[bus.veh] = marker;
+                    marker.addTo(map).bindPopup(popup);
+                }
+            });
+        }
+
+        setInterval(updateBuses, 5000);
+        updateBuses();
+    </script>
+</body>
+</html>
