@@ -5,7 +5,56 @@
     <title>HSL Busses Live Map</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        #map { height: 98vh; width: 99vw; }
+        #map { height: 95vh; width: 99vw; }
+        .search-container {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .search-input {
+            padding: 8px 12px;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            width: 120px;
+        }
+        .search-input:focus {
+            outline: none;
+            border-color: #0072ce;
+        }
+        .search-button {
+            padding: 8px 16px;
+            background: #0072ce;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .search-button:hover {
+            background: #005a9e;
+        }
+        .clear-button {
+            padding: 8px 12px;
+            background: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .clear-button:hover {
+            background: #5a6268;
+        }
         .bus-marker {
             display: flex;
             flex-direction: column;
@@ -36,6 +85,11 @@
     </style>
 </head>
 <body>
+    <div class="search-container">
+        <input type="text" id="searchInput" class="search-input" placeholder="Enter bus line..." />
+        <button id="searchButton" class="search-button">Search</button>
+        <button id="clearButton" class="clear-button">Clear</button>
+    </div>
     <div id="map"></div>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
@@ -45,6 +99,30 @@
         }).addTo(map);
 
         let busMarkers = {};
+        let allBuses = [];
+        let filteredBuses = [];
+        let currentSearchTerm = '';
+        
+
+        // Search functionality
+        document.getElementById('searchButton').addEventListener('click', filterBuses);
+        document.getElementById('searchInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                filterBuses();
+            }
+        });
+        document.getElementById('clearButton').addEventListener('click', clearFilter);
+
+        function filterBuses() {
+            currentSearchTerm = document.getElementById('searchInput').value.trim().toLowerCase();
+            updateBuses();
+        }
+
+        function clearFilter() {
+            document.getElementById('searchInput').value = '';
+            currentSearchTerm = '';
+            updateBuses();
+        }
 
         function createBusIcon(line) {
             // Improved SVG: A stylized blue bus with windows, headlights, and wheels
@@ -81,16 +159,27 @@
         async function updateBuses() {
             const resp = await fetch('api.php');
             const buses = await resp.json();
+            
+            // Store all buses for filtering and recompute filtered set every refresh
+            allBuses = buses;
+            if (!currentSearchTerm) {
+                filteredBuses = buses;
+            } else {
+                filteredBuses = buses.filter(bus =>
+                    (bus.line || '').toString().toLowerCase().includes(currentSearchTerm)
+                );
+            }
 
             // Remove old markers
             for (const id in busMarkers) {
-                if (!buses.some(bus => bus.veh === id)) {
+                if (!filteredBuses.some(bus => bus.veh === id)) {
                     map.removeLayer(busMarkers[id]);
                     delete busMarkers[id];
                 }
             }
 
-            buses.forEach(bus => {
+            // Update or add markers for filtered buses
+            filteredBuses.forEach(bus => {
                 let marker = busMarkers[bus.veh];
                 const popup = `Line: <b>${bus.line}</b><br>Speed: ${bus.spd} km/h<br>Delay: ${bus.dl} s<br>Time: ${bus.tst}`;
                 if (marker) {
@@ -106,6 +195,7 @@
 
         setInterval(updateBuses, 5000);
         updateBuses();
+        
     </script>
 </body>
 </html>
